@@ -1,4 +1,3 @@
-
 --==================================================
 -- PLUTO'S SCRIPT HUB
 --==================================================
@@ -15,6 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local LUMBER_EMPIRE_ID = 99686412871121
 local MY_HAUNTED_HOUSE_ID = 17278083429
+local IsLumberEmpire = game.PlaceId == LUMBER_EMPIRE_ID
 
 local Rayfield = loadstring(game:HttpGet(
     "https://sirius.menu/rayfield"
@@ -263,14 +263,14 @@ end
 -- GAME-SPECIFIC TABS
 --==================================================
 
-if game.PlaceId == LUMBER_EMPIRE_ID then
+if IsLumberEmpire then
 
     --==================================================
     -- LUMBER EMPIRE TAB (FIRST)
     --==================================================
 
     local LumberTab = Window:CreateTab(
-        "Lumber Empire",
+        "🪓 Lumber Empire",
         4483362458
     )
 
@@ -432,7 +432,10 @@ if game.PlaceId == LUMBER_EMPIRE_ID then
     -- AIRPORT TAB (SECOND)
     --==================================================
 
-    local AirportTab = Window:CreateTab("Airport", 4483362458)
+    local AirportTab = Window:CreateTab(
+        "✈️ Airport",
+        4483362458
+    )
 
     AirportTab:CreateParagraph({
         Title = "Airport Automation",
@@ -773,35 +776,39 @@ local function StartFly()
     end)
 end
 
-ConfigControls.FlyToggle = UniversalTab:CreateToggle({
-    Name = "Fly",
-    CurrentValue = false,
-    Flag = "FlyToggle",
+-- Only display Fly controls outside Lumber Empire.
 
-    Callback = function(value)
-        ConfigValues.FlyToggle = value
+if not IsLumberEmpire then
+    ConfigControls.FlyToggle = UniversalTab:CreateToggle({
+        Name = "Fly",
+        CurrentValue = false,
+        Flag = "FlyToggle",
 
-        if value then
-            StartFly()
-        else
-            StopFly()
+        Callback = function(value)
+            ConfigValues.FlyToggle = value
+
+            if value then
+                StartFly()
+            else
+                StopFly()
+            end
         end
-    end
-})
+    })
 
-ConfigControls.FlySpeedSlider = UniversalTab:CreateSlider({
-    Name = "Fly Speed",
-    Range = {10, 200},
-    Increment = 5,
-    Suffix = "Speed",
-    CurrentValue = 50,
-    Flag = "FlySpeedSlider",
+    ConfigControls.FlySpeedSlider = UniversalTab:CreateSlider({
+        Name = "Fly Speed",
+        Range = {10, 200},
+        Increment = 5,
+        Suffix = "Speed",
+        CurrentValue = 50,
+        Flag = "FlySpeedSlider",
 
-    Callback = function(value)
-        ConfigValues.FlySpeedSlider = value
-        FlySpeed = value
-    end
-})
+        Callback = function(value)
+            ConfigValues.FlySpeedSlider = value
+            FlySpeed = value
+        end
+    })
+end
 
 --==================================================
 -- INFINITE JUMP
@@ -823,16 +830,20 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
-ConfigControls.InfiniteJumpToggle = UniversalTab:CreateToggle({
-    Name = "Infinite Jump",
-    CurrentValue = false,
-    Flag = "InfiniteJumpToggle",
+-- Only display Infinite Jump outside Lumber Empire.
 
-    Callback = function(value)
-        ConfigValues.InfiniteJumpToggle = value
-        InfiniteJumpEnabled = value
-    end
-})
+if not IsLumberEmpire then
+    ConfigControls.InfiniteJumpToggle = UniversalTab:CreateToggle({
+        Name = "Infinite Jump",
+        CurrentValue = false,
+        Flag = "InfiniteJumpToggle",
+
+        Callback = function(value)
+            ConfigValues.InfiniteJumpToggle = value
+            InfiniteJumpEnabled = value
+        end
+    })
+end
 
 --==================================================
 -- NOCLIP
@@ -1067,37 +1078,41 @@ local function RefreshESP()
     end
 end
 
-ConfigControls.PlayerESPToggle = UniversalTab:CreateToggle({
-    Name = "Player ESP",
-    CurrentValue = false,
-    Flag = "PlayerESPToggle",
+-- Only display Player ESP controls outside Lumber Empire.
 
-    Callback = function(value)
-        ConfigValues.PlayerESPToggle = value
-        ESPEnabled = value
+if not IsLumberEmpire then
+    ConfigControls.PlayerESPToggle = UniversalTab:CreateToggle({
+        Name = "Player ESP",
+        CurrentValue = false,
+        Flag = "PlayerESPToggle",
 
-        if value then
-            RefreshESP()
+        Callback = function(value)
+            ConfigValues.PlayerESPToggle = value
+            ESPEnabled = value
+
+            if value then
+                RefreshESP()
+            end
+
+            UpdateESP()
         end
+    })
 
-        UpdateESP()
-    end
-})
+    ConfigControls.ESPOpacitySlider = UniversalTab:CreateSlider({
+        Name = "ESP Opacity",
+        Range = {0, 100},
+        Increment = 5,
+        Suffix = "%",
+        CurrentValue = 50,
+        Flag = "ESPOpacitySlider",
 
-ConfigControls.ESPOpacitySlider = UniversalTab:CreateSlider({
-    Name = "ESP Opacity",
-    Range = {0, 100},
-    Increment = 5,
-    Suffix = "%",
-    CurrentValue = 50,
-    Flag = "ESPOpacitySlider",
-
-    Callback = function(value)
-        ConfigValues.ESPOpacitySlider = value
-        ESPOpacity = value
-        UpdateESP()
-    end
-})
+        Callback = function(value)
+            ConfigValues.ESPOpacitySlider = value
+            ESPOpacity = value
+            UpdateESP()
+        end
+    })
+end
 
 local function ConnectPlayer(player)
     if player == LocalPlayer then
