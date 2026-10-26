@@ -567,17 +567,48 @@ local function GetCoinParts()
     return coins
 end
 
+local WEAPON_KEYWORDS = {"knife", "gun", "revolver"}
+
+local function IsWeaponName(name)
+    local lower = string.lower(name)
+
+    for _, keyword in ipairs(WEAPON_KEYWORDS) do
+        if string.find(lower, keyword, 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function GetWeaponPart(object)
+    if object:IsA("BasePart") then
+        return object
+    end
+
+    local handle = object:FindFirstChild("Handle")
+
+    if handle and handle:IsA("BasePart") then
+        return handle
+    end
+
+    return object:FindFirstChildWhichIsA("BasePart", true)
+end
+
 local function GetDroppedWeapons()
     local weapons = {}
+    local seen = {}
 
     for _, object in ipairs(workspace:GetDescendants()) do
-        if object:IsA("Tool") and not IsInsidePlayerCharacter(object) then
-            local name = string.lower(object.Name)
+        if (object:IsA("Tool") or object:IsA("Model") or object:IsA("BasePart"))
+            and IsWeaponName(object.Name)
+            and not IsInsidePlayerCharacter(object) then
 
-            if string.find(name, "gun", 1, true)
-                or string.find(name, "knife", 1, true) then
+            local part = GetWeaponPart(object)
 
-                table.insert(weapons, object)
+            if part and part:IsDescendantOf(workspace) and not seen[part] then
+                seen[part] = true
+                table.insert(weapons, part)
             end
         end
     end
@@ -585,39 +616,48 @@ local function GetDroppedWeapons()
     return weapons
 end
 
-local function TouchObject(target)
+local function IsStillDropped(part)
+    return part ~= nil and part.Parent ~= nil and part:IsDescendantOf(workspace)
+end
+
+-- The game handles weapon pickup on the server, so a client-side touch does
+-- nothing. The character has to actually contact the drop: step onto it, then
+-- put the player back where they were standing.
+local function TouchObject(part)
     local character = LocalPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-    if not root or not target or not target.Parent then
+    if not root or not humanoid or humanoid.Health <= 0 then
         return false
     end
 
-    local part = target
-
-    if not part:IsA("BasePart") then
-        part = target:FindFirstChild("Handle")
-            or target:FindFirstChildWhichIsA("BasePart", true)
-    end
-
-    if not part then
+    if not IsStillDropped(part) then
         return false
     end
 
     if typeof(firetouchinterest) == "function" then
         pcall(firetouchinterest, root, part, 0)
         pcall(firetouchinterest, root, part, 1)
-        return true
+        task.wait(0.1)
+
+        if not IsStillDropped(part) then
+            return true
+        end
     end
 
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-
-    if humanoid then
-        humanoid:MoveTo(part.Position)
-        return true
+    if part.Anchored then
+        return false
     end
 
-    return false
+    local originalCFrame = root.CFrame
+
+    root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2.5, 0))
+    task.wait(0.25)
+    root.CFrame = originalCFrame
+    task.wait(0.1)
+
+    return not IsStillDropped(part)
 end
 
 --==================================================
@@ -1002,7 +1042,7 @@ local function PickupWeapons()
         end
 
         TouchObject(weapon)
-        task.wait(0.15)
+        task.wait(0.1)
     end
 end
 
