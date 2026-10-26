@@ -1181,6 +1181,39 @@ MM2Tab:CreateSection("Weapons")
 
 local KnifePauseNotified = false
 
+-- Drops that were already on the ground when this life started. MM2 keeps the
+-- map it just played around through the lobby intermission, so a GunDrop from
+-- the round you died in is still in workspace while you stand in the lobby, and
+-- with no distance limit the pickup used to send you back to it. Anything in
+-- here is ignored until it leaves workspace; drops created later are new ones.
+local StaleDrops = setmetatable({}, {__mode = "k"})
+
+-- Drops can also appear a moment after the respawn, so anything found during
+-- the first few seconds of a life is treated as a leftover too.
+local SPAWN_STALE_WINDOW = 3
+local SpawnStaleDeadline = 0
+
+local function PruneStaleDrops()
+    for part in pairs(StaleDrops) do
+        if not IsStillDropped(part) then
+            StaleDrops[part] = nil
+        end
+    end
+end
+
+local function MarkExistingDropsStale()
+    PruneStaleDrops()
+
+    for _, part in ipairs(GetDroppedWeapons(true)) do
+        StaleDrops[part] = true
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    SpawnStaleDeadline = os.clock() + SPAWN_STALE_WINDOW
+    MarkExistingDropsStale()
+end)
+
 local function PickupWeapons()
     local character = LocalPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -1204,6 +1237,11 @@ local function PickupWeapons()
     end
 
     RemoveFailedPickups()
+    PruneStaleDrops()
+
+    if os.clock() < SpawnStaleDeadline then
+        MarkExistingDropsStale()
+    end
 
     -- Innocents only take the sheriff's gun; the murderer's knife is left for
     -- everyone else.
@@ -1220,7 +1258,9 @@ local function PickupWeapons()
 
         local retryAt = FailedPickups[weapon]
 
-        if IsStillDropped(weapon) and (not retryAt or os.clock() >= retryAt) then
+        if not StaleDrops[weapon]
+            and IsStillDropped(weapon)
+            and (not retryAt or os.clock() >= retryAt) then
 
             if TouchObject(weapon) then
                 FailedPickups[weapon] = nil
