@@ -453,6 +453,7 @@ local ConfigValues = {
     CoinESPToggle = false,
     AutoCoinsToggle = false,
     AutoPickupToggle = false,
+    MurdererPickupToggle = false,
     RoleNotifierToggle = false,
 
     WalkSpeedToggle = false,
@@ -1141,7 +1142,7 @@ local function PickupWeapons()
         return
     end
 
-    if IsLocalMurderer() then
+    if IsLocalMurderer() and not ConfigValues.MurdererPickupToggle then
         return
     end
 
@@ -1186,6 +1187,16 @@ ConfigControls.AutoPickupToggle = MM2Tab:CreateToggle({
         else
             StopLoop("AutoPickupToggle")
         end
+    end
+})
+
+ConfigControls.MurdererPickupToggle = MM2Tab:CreateToggle({
+    Name = "Murderer Pickup",
+    CurrentValue = false,
+    Flag = "MurdererPickupToggle",
+
+    Callback = function(value)
+        ConfigValues.MurdererPickupToggle = value
     end
 })
 
