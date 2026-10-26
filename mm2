@@ -1188,7 +1188,11 @@ local function PickupWeapons()
         return
     end
 
-    if IsLocalMurderer() and not ConfigValues.MurdererPickupToggle then
+    -- A knife in hand or in the backpack turns pickup off: that means the
+    -- murderer, or an innocent who took the murderer's knife, and jumping
+    -- out of a chase for the gun is not wanted. Checked live, so it follows
+    -- the knife rather than the role.
+    if not ConfigValues.MurdererPickupToggle and HasTool(LocalPlayer, MURDERER_TOOLS) then
         return
     end
 
