@@ -584,22 +584,50 @@ local PICKUP_RETRY_DELAY = 3
 local FailedPickups = setmetatable({}, {__mode = "k"})
 
 -- The murderer is left alone: their own knife is the only weapon they can use,
--- and the jump grabbed them out of position mid-chase. Once the knife is seen
--- the round stays marked until the next spawn, since it leaves their hands
--- while it is thrown.
+-- and the jump grabbed them out of position mid-chase. The role is remembered
+-- for the rest of the round, since the knife and gun leave your hands while
+-- they are thrown or dropped.
 local LocalIsMurderer = false
+local LocalIsSheriff = false
 
-local function IsLocalMurderer()
+-- The role is only sampled for a moment after spawning. Later on, an innocent
+-- can be holding the murderer's knife or the sheriff's gun, which would
+-- otherwise make their role look like something it is not.
+local ROLE_CHECK_WINDOW = 12
+local RoleCheckDeadline = 0
+
+local function RefreshLocalRole()
+    if os.clock() > RoleCheckDeadline then
+        return
+    end
+
     if HasTool(LocalPlayer, MURDERER_TOOLS) then
         LocalIsMurderer = true
+    elseif HasTool(LocalPlayer, SHERIFF_TOOLS) then
+        LocalIsSheriff = true
     end
+end
+
+local function IsLocalMurderer()
+    RefreshLocalRole()
 
     return LocalIsMurderer
 end
 
+local function IsLocalInnocent()
+    RefreshLocalRole()
+
+    return not LocalIsMurderer and not LocalIsSheriff
+end
+
 LocalPlayer.CharacterAdded:Connect(function()
     LocalIsMurderer = false
+    LocalIsSheriff = false
+    RoleCheckDeadline = os.clock() + ROLE_CHECK_WINDOW
 end)
+
+-- The script usually runs mid-life, so start the window for the current one.
+RoleCheckDeadline = os.clock() + ROLE_CHECK_WINDOW
 
 local function IsDropName(name)
     local lower = string.lower(name)
@@ -659,11 +687,31 @@ local function GetWeaponPart(object)
     return object:FindFirstChildWhichIsA("BasePart", true)
 end
 
-local function GetDroppedWeapons()
+-- Looks for a keyword in the object's name and its close ancestors, since a
+-- drop can be the part itself or a model wrapping it.
+local function NameHas(object, keyword)
+    local current = object
+    local depth = 0
+
+    while current and current ~= workspace and depth < 3 do
+        if string.find(string.lower(current.Name), keyword, 1, true) then
+            return true
+        end
+
+        current = current.Parent
+        depth = depth + 1
+    end
+
+    return false
+end
+
+local function GetDroppedWeapons(allowKnifeDrops)
     local weapons = {}
     local seen = {}
 
-    local function Add(part)
+    local function Add(source)
+        local part = GetWeaponPart(source)
+
         if not part or not part:IsA("BasePart") then
             return
         end
@@ -671,6 +719,10 @@ local function GetDroppedWeapons()
         if seen[part]
             or not part:IsDescendantOf(workspace)
             or IsInsidePlayerCharacter(part) then
+            return
+        end
+
+        if not allowKnifeDrops and NameHas(source, "knife") then
             return
         end
 
@@ -682,16 +734,10 @@ local function GetDroppedWeapons()
         if object:IsA("Fire") then
             -- The drop's marker effect, matched by the color it is set to.
             if ColorMatches(object.Color) or ColorMatches(object.SecondaryColor) then
-                local holder = object.Parent
-
-                if holder and not holder:IsA("BasePart") then
-                    holder = GetWeaponPart(holder)
-                end
-
-                Add(holder)
+                Add(object.Parent)
             end
         elseif IsDropName(object.Name) then
-            Add(GetWeaponPart(object))
+            Add(object)
         end
     end
 
@@ -1148,7 +1194,9 @@ local function PickupWeapons()
 
     RemoveFailedPickups()
 
-    local weapons = GetDroppedWeapons()
+    -- Innocents only take the sheriff's gun; the murderer's knife is left for
+    -- everyone else.
+    local weapons = GetDroppedWeapons(not IsLocalInnocent())
 
     table.sort(weapons, function(a, b)
         return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
