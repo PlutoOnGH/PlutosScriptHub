@@ -567,30 +567,41 @@ local function GetCoinParts()
     return coins
 end
 
-local WEAPON_KEYWORDS = {"knife", "gun", "revolver"}
+-- When a player dies, MM2 puts their weapon on the ground as "GunDrop" /
+-- "KnifeDrop" and marks it with a green Fire effect. Only those are targeted,
+-- so held knives, thrown knives and map props are left alone.
+local DROP_NAMES = {"gundrop", "knifedrop"}
+local DROP_FIRE_COLOR = Color3.fromRGB(1, 76, 0)
+local DROP_COLOR_TOLERANCE = 0.08
 
--- A drop only counts when the player is this close to it. Teleporting to a
--- weapon anywhere on the map dragged players across the game.
-local PICKUP_RANGE = 20
-
--- Anything moving faster than this is a thrown weapon in flight, not a drop.
+-- Anything moving faster than this is a weapon in flight, not a settled drop.
 local PICKUP_MAX_SPEED = 6
 
 -- How long to leave a drop alone after a failed attempt at it.
-local PICKUP_RETRY_DELAY = 4
+local PICKUP_RETRY_DELAY = 3
 
 local FailedPickups = setmetatable({}, {__mode = "k"})
 
-local function IsWeaponName(name)
+local function IsDropName(name)
     local lower = string.lower(name)
 
-    for _, keyword in ipairs(WEAPON_KEYWORDS) do
-        if string.find(lower, keyword, 1, true) then
+    for _, dropName in ipairs(DROP_NAMES) do
+        if string.find(lower, dropName, 1, true) then
             return true
         end
     end
 
     return false
+end
+
+local function ColorMatches(color)
+    if typeof(color) ~= "Color3" then
+        return false
+    end
+
+    return math.abs(color.R - DROP_FIRE_COLOR.R) <= DROP_COLOR_TOLERANCE
+        and math.abs(color.G - DROP_FIRE_COLOR.G) <= DROP_COLOR_TOLERANCE
+        and math.abs(color.B - DROP_FIRE_COLOR.B) <= DROP_COLOR_TOLERANCE
 end
 
 -- True when the object is joined to a character, i.e. a weapon someone is
@@ -633,20 +644,35 @@ local function GetDroppedWeapons()
     local weapons = {}
     local seen = {}
 
+    local function Add(part)
+        if not part or not part:IsA("BasePart") then
+            return
+        end
+
+        if seen[part]
+            or not part:IsDescendantOf(workspace)
+            or IsInsidePlayerCharacter(part) then
+            return
+        end
+
+        seen[part] = true
+        table.insert(weapons, part)
+    end
+
     for _, object in ipairs(workspace:GetDescendants()) do
-        local isDrop = object:IsA("Tool")
-            or (object:IsA("Model") and object:FindFirstChildWhichIsA("Tool", true) ~= nil)
+        if object:IsA("Fire") then
+            -- The drop's marker effect, matched by the color it is set to.
+            if ColorMatches(object.Color) or ColorMatches(object.SecondaryColor) then
+                local holder = object.Parent
 
-        if isDrop
-            and IsWeaponName(object.Name)
-            and not IsInsidePlayerCharacter(object) then
+                if holder and not holder:IsA("BasePart") then
+                    holder = GetWeaponPart(holder)
+                end
 
-            local part = GetWeaponPart(object)
-
-            if part and part:IsDescendantOf(workspace) and not seen[part] then
-                seen[part] = true
-                table.insert(weapons, part)
+                Add(holder)
             end
+        elseif IsDropName(object.Name) then
+            Add(GetWeaponPart(object))
         end
     end
 
@@ -677,15 +703,11 @@ local function TouchObject(part)
         return false
     end
 
-    if not IsStillDropped(part) or part.Anchored then
+    if not IsStillDropped(part) then
         return false
     end
 
     if part.AssemblyLinearVelocity.Magnitude > PICKUP_MAX_SPEED then
-        return false
-    end
-
-    if (part.Position - root.Position).Magnitude > PICKUP_RANGE then
         return false
     end
 
@@ -1116,9 +1138,7 @@ local function PickupWeapons()
 
         local retryAt = FailedPickups[weapon]
 
-        if IsStillDropped(weapon)
-            and (weapon.Position - root.Position).Magnitude <= PICKUP_RANGE
-            and (not retryAt or os.clock() >= retryAt) then
+        if IsStillDropped(weapon) and (not retryAt or os.clock() >= retryAt) then
 
             if TouchObject(weapon) then
                 FailedPickups[weapon] = nil
