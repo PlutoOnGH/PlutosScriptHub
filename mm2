@@ -569,11 +569,45 @@ end
 
 local WEAPON_KEYWORDS = {"knife", "gun", "revolver"}
 
+-- A drop only counts when the player is this close to it. Teleporting to a
+-- weapon anywhere on the map dragged players across the game.
+local PICKUP_RANGE = 20
+
+-- Anything moving faster than this is a thrown weapon in flight, not a drop.
+local PICKUP_MAX_SPEED = 6
+
+-- How long to leave a drop alone after a failed attempt at it.
+local PICKUP_RETRY_DELAY = 4
+
+local FailedPickups = setmetatable({}, {__mode = "k"})
+
 local function IsWeaponName(name)
     local lower = string.lower(name)
 
     for _, keyword in ipairs(WEAPON_KEYWORDS) do
         if string.find(lower, keyword, 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- True when the object is joined to a character, i.e. a weapon someone is
+-- holding rather than one lying on the ground.
+local function IsHeldByCharacter(part)
+    local ok, connected = pcall(function()
+        return part:GetConnectedParts(true)
+    end)
+
+    if not ok or type(connected) ~= "table" then
+        return false
+    end
+
+    for _, other in ipairs(connected) do
+        local ancestor = other:FindFirstAncestorOfClass("Model")
+
+        if ancestor and Players:GetPlayerFromCharacter(ancestor) then
             return true
         end
     end
@@ -600,7 +634,10 @@ local function GetDroppedWeapons()
     local seen = {}
 
     for _, object in ipairs(workspace:GetDescendants()) do
-        if (object:IsA("Tool") or object:IsA("Model") or object:IsA("BasePart"))
+        local isDrop = object:IsA("Tool")
+            or (object:IsA("Model") and object:FindFirstChildWhichIsA("Tool", true) ~= nil)
+
+        if isDrop
             and IsWeaponName(object.Name)
             and not IsInsidePlayerCharacter(object) then
 
@@ -620,6 +657,14 @@ local function IsStillDropped(part)
     return part ~= nil and part.Parent ~= nil and part:IsDescendantOf(workspace)
 end
 
+local function RemoveFailedPickups()
+    for part in pairs(FailedPickups) do
+        if not IsStillDropped(part) then
+            FailedPickups[part] = nil
+        end
+    end
+end
+
 -- The game handles weapon pickup on the server, so a client-side touch does
 -- nothing. The character has to actually contact the drop: step onto it, then
 -- put the player back where they were standing.
@@ -628,11 +673,23 @@ local function TouchObject(part)
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-    if not root or not humanoid or humanoid.Health <= 0 then
+    if not root or not root.Parent or not humanoid or humanoid.Health <= 0 then
         return false
     end
 
-    if not IsStillDropped(part) then
+    if not IsStillDropped(part) or part.Anchored then
+        return false
+    end
+
+    if part.AssemblyLinearVelocity.Magnitude > PICKUP_MAX_SPEED then
+        return false
+    end
+
+    if (part.Position - root.Position).Magnitude > PICKUP_RANGE then
+        return false
+    end
+
+    if IsHeldByCharacter(part) then
         return false
     end
 
@@ -646,15 +703,15 @@ local function TouchObject(part)
         end
     end
 
-    if part.Anchored then
-        return false
-    end
-
     local originalCFrame = root.CFrame
 
     root.CFrame = CFrame.new(part.Position + Vector3.new(0, 2.5, 0))
     task.wait(0.25)
-    root.CFrame = originalCFrame
+
+    if root.Parent then
+        root.CFrame = originalCFrame
+    end
+
     task.wait(0.1)
 
     return not IsStillDropped(part)
@@ -1036,13 +1093,41 @@ ConfigControls.AutoCoinsToggle = MM2Tab:CreateToggle({
 MM2Tab:CreateSection("Weapons")
 
 local function PickupWeapons()
-    for _, weapon in ipairs(GetDroppedWeapons()) do
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+    if not root or not root.Parent or not humanoid or humanoid.Health <= 0 then
+        return
+    end
+
+    RemoveFailedPickups()
+
+    local weapons = GetDroppedWeapons()
+
+    table.sort(weapons, function(a, b)
+        return (a.Position - root.Position).Magnitude < (b.Position - root.Position).Magnitude
+    end)
+
+    for _, weapon in ipairs(weapons) do
         if not ConfigValues.AutoPickupToggle then
             return
         end
 
-        TouchObject(weapon)
-        task.wait(0.1)
+        local retryAt = FailedPickups[weapon]
+
+        if IsStillDropped(weapon)
+            and (weapon.Position - root.Position).Magnitude <= PICKUP_RANGE
+            and (not retryAt or os.clock() >= retryAt) then
+
+            if TouchObject(weapon) then
+                FailedPickups[weapon] = nil
+            else
+                FailedPickups[weapon] = os.clock() + PICKUP_RETRY_DELAY
+            end
+
+            task.wait(0.1)
+        end
     end
 end
 
