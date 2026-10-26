@@ -1,5 +1,5 @@
 --==================================================
--- ECLIPSE
+-- PLUTO'S HUB
 -- MURDER MYSTERY 2
 -- PANDA AUTH - PUSL-V4
 --==================================================
@@ -10,7 +10,7 @@ local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
 
 local SERVICE_ID = "plutosmm2"
-local KEY_CACHE_PATH = "PlutosScriptHub/Eclipse_key.txt"
+local KEY_CACHE_PATH = "PlutosScriptHub/MM2_key.txt"
 
 --==================================================
 -- AUTH LIBRARY
@@ -24,7 +24,7 @@ do
     end)
 
     if not ok or type(library) ~= "table" or type(library.configure) ~= "function" then
-        warn("[Eclipse] The auth library failed to load. Check your connection and try again.")
+        warn("[Pluto's Hub] The auth library failed to load. Check your connection and try again.")
         return
     end
 
@@ -133,7 +133,7 @@ local function PromptForKey(statusText)
     end
 
     local gui = new("ScreenGui", {
-        Name = "EclipseAuth",
+        Name = "PlutosHubAuth",
         ResetOnSpawn = false,
         IgnoreGuiInset = true,
         DisplayOrder = 1000,
@@ -164,7 +164,7 @@ local function PromptForKey(statusText)
         Position = UDim2.fromOffset(20, 16),
         BackgroundTransparency = 1,
         Font = Enum.Font.GothamBold,
-        Text = "ECLIPSE",
+        Text = "PLUTO'S HUB",
         TextColor3 = Color3.fromRGB(255, 255, 255),
         TextSize = 20,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -347,11 +347,11 @@ end
 local authResult = Authenticate()
 
 if not authResult then
-    warn("[Eclipse] Authentication failed. Get a key: " .. GetKeyUrl())
+    warn("[Pluto's Hub] Authentication failed. Get a key: " .. GetKeyUrl())
     return
 end
 
-print("[Eclipse] Authenticated. Premium: " .. tostring(authResult.isPremium))
+print("[Pluto's Hub] Authenticated. Premium: " .. tostring(authResult.isPremium))
 
 --==================================================
 -- HUB
@@ -371,8 +371,8 @@ local Rayfield = loadstring(game:HttpGet(
 ))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Eclipse",
-    LoadingTitle = "Eclipse",
+    Name = "Pluto's Hub",
+    LoadingTitle = "Pluto's Hub",
     LoadingSubtitle = "Murder Mystery 2",
     ConfigurationSaving = {Enabled = false},
     KeySystem = false,
@@ -420,7 +420,7 @@ local function StartLoop(key, interval, action)
             local ok, err = pcall(action)
 
             if not ok then
-                warn("[Eclipse] " .. key .. ": " .. tostring(err))
+                warn("[Pluto's Hub] " .. key .. ": " .. tostring(err))
             end
 
             task.wait(interval)
@@ -711,7 +711,7 @@ task.spawn(function()
         local ok, err = pcall(UpdateRoleESP)
 
         if not ok then
-            warn("[Eclipse] Role ESP: " .. tostring(err))
+            warn("[Pluto's Hub] Role ESP: " .. tostring(err))
         end
     end
 end)
@@ -1532,7 +1532,7 @@ end)
 local InfoTab = Window:CreateTab("Info")
 
 InfoTab:CreateParagraph({
-    Title = "Eclipse",
+    Title = "Pluto's Hub",
     Content = "Murder Mystery 2 role trackers, coin helpers, and universal player utilities."
 })
 
