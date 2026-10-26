@@ -1179,6 +1179,8 @@ ConfigControls.AutoCoinsToggle = MM2Tab:CreateToggle({
 
 MM2Tab:CreateSection("Weapons")
 
+local KnifePauseNotified = false
+
 local function PickupWeapons()
     local character = LocalPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -1193,6 +1195,11 @@ local function PickupWeapons()
     -- out of a chase for the gun is not wanted. Checked live, so it follows
     -- the knife rather than the role.
     if not ConfigValues.MurdererPickupToggle and HasTool(LocalPlayer, MURDERER_TOOLS) then
+        if not KnifePauseNotified then
+            KnifePauseNotified = true
+            Notify("Auto Pickup", "Paused: knife in inventory, so weapon drops are ignored.")
+        end
+
         return
     end
 
@@ -1233,6 +1240,7 @@ ConfigControls.AutoPickupToggle = MM2Tab:CreateToggle({
 
     Callback = function(value)
         ConfigValues.AutoPickupToggle = value
+        KnifePauseNotified = false
 
         if value then
             StartLoop("AutoPickupToggle", 1, PickupWeapons)
