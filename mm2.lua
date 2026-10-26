@@ -7,7 +7,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
-local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -51,10 +50,7 @@ local ConfigValues = {
     WalkSpeedSlider = 32,
     InfiniteJumpToggle = false,
     NoclipToggle = false,
-    FullBrightToggle = false,
-    AntiAFKToggle = false,
-    PlayerESPToggle = false,
-    ESPOpacitySlider = 50
+    AntiAFKToggle = false
 }
 
 local ConfigControls = {}
@@ -91,7 +87,8 @@ local SHERIFF_TOOLS = {"Gun", "Revolver"}
 
 local ROLE_COLORS = {
     Murderer = Color3.fromRGB(255, 60, 60),
-    Sheriff = Color3.fromRGB(60, 150, 255)
+    Sheriff = Color3.fromRGB(60, 150, 255),
+    Innocent = Color3.fromRGB(0, 255, 0)
 }
 
 local function HasTool(player, toolNames)
@@ -320,18 +317,15 @@ local function UpdateRoleESP()
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            local role = GetRole(player)
+            local role = GetRole(player) or "Innocent"
+            local data = RoleESPObjects[player]
 
-            if role then
-                local data = RoleESPObjects[player]
+            if not data
+                or data.Role ~= role
+                or not data.Highlight
+                or data.Highlight.Adornee ~= player.Character then
 
-                if not data or data.Role ~= role then
-                    CreateRoleESP(player, role)
-                elseif data.Highlight and data.Highlight.Adornee ~= player.Character then
-                    data.Highlight.Adornee = player.Character
-                end
-            else
-                RemoveRoleESP(player)
+                CreateRoleESP(player, role)
             end
         end
     end
@@ -621,7 +615,7 @@ ConfigControls.AutoPickupToggle = MM2Tab:CreateToggle({
 
 MM2Tab:CreateParagraph({
     Title = "Notes",
-    Content = "Role detection reads the Knife and Gun tools from player inventories, so it updates as soon as a round starts."
+    Content = "Role detection reads the Knife and Gun tools from player inventories. Anyone without either is shown as an innocent in bright green."
 })
 
 --==================================================
@@ -629,167 +623,6 @@ MM2Tab:CreateParagraph({
 --==================================================
 
 local PlayerTab = Window:CreateTab("Player")
-
--- PLAYER ESP
-
-local ESPEnabled = false
-local ESPOpacity = 50
-local ESPObjects = {}
-
-local function RemoveESP(player)
-    local data = ESPObjects[player]
-
-    if not data then
-        return
-    end
-
-    if data.Highlight then
-        data.Highlight:Destroy()
-    end
-
-    if data.Billboard then
-        data.Billboard:Destroy()
-    end
-
-    ESPObjects[player] = nil
-end
-
-local function CreateESP(player)
-    if player == LocalPlayer then
-        return
-    end
-
-    RemoveESP(player)
-
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not character or not root then
-        return
-    end
-
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "PlutoPlayerESP"
-    highlight.Adornee = character
-    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.FillColor = Color3.fromRGB(170, 85, 255)
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-    highlight.FillTransparency = 1 - (ESPOpacity / 100)
-    highlight.OutlineTransparency = 1 - (ESPOpacity / 100)
-    highlight.Enabled = ESPEnabled
-    highlight.Parent = character
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "PlutoPlayerName"
-    billboard.Adornee = root
-    billboard.Size = UDim2.new(0, 200, 0, 35)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Enabled = ESPEnabled
-    billboard.Parent = character
-
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.Text = player.DisplayName .. " (@" .. player.Name .. ")"
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextStrokeTransparency = 0.25
-    label.TextScaled = true
-    label.Font = Enum.Font.GothamBold
-    label.Parent = billboard
-
-    ESPObjects[player] = {
-        Highlight = highlight,
-        Billboard = billboard
-    }
-end
-
-local function UpdateESP()
-    for _, data in pairs(ESPObjects) do
-        if data.Highlight then
-            data.Highlight.FillTransparency = 1 - (ESPOpacity / 100)
-            data.Highlight.OutlineTransparency = 1 - (ESPOpacity / 100)
-            data.Highlight.Enabled = ESPEnabled
-        end
-
-        if data.Billboard then
-            data.Billboard.Enabled = ESPEnabled
-        end
-    end
-end
-
-local function RefreshESP()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            CreateESP(player)
-        end
-    end
-end
-
-local function ConnectPlayer(player)
-    if player == LocalPlayer then
-        return
-    end
-
-    player.CharacterAdded:Connect(function()
-        task.wait(1)
-
-        if ESPEnabled then
-            CreateESP(player)
-        end
-    end)
-
-    player.CharacterRemoving:Connect(function()
-        RemoveESP(player)
-    end)
-
-    if ESPEnabled and player.Character then
-        CreateESP(player)
-    end
-end
-
-Players.PlayerAdded:Connect(ConnectPlayer)
-
-Players.PlayerRemoving:Connect(function(player)
-    RemoveESP(player)
-    RemoveRoleESP(player)
-end)
-
-for _, player in ipairs(Players:GetPlayers()) do
-    ConnectPlayer(player)
-end
-
-ConfigControls.PlayerESPToggle = PlayerTab:CreateToggle({
-    Name = "Player ESP",
-    CurrentValue = false,
-    Flag = "PlayerESPToggle",
-
-    Callback = function(value)
-        ConfigValues.PlayerESPToggle = value
-        ESPEnabled = value
-
-        if value then
-            RefreshESP()
-        end
-
-        UpdateESP()
-    end
-})
-
-ConfigControls.ESPOpacitySlider = PlayerTab:CreateSlider({
-    Name = "ESP Opacity",
-    Range = {0, 100},
-    Increment = 5,
-    Suffix = "%",
-    CurrentValue = 50,
-    Flag = "ESPOpacitySlider",
-
-    Callback = function(value)
-        ConfigValues.ESPOpacitySlider = value
-        ESPOpacity = value
-        UpdateESP()
-    end
-})
 
 -- WALK SPEED
 
@@ -947,54 +780,6 @@ ConfigControls.NoclipToggle = PlayerTab:CreateToggle({
     Callback = function(value)
         ConfigValues.NoclipToggle = value
         SetNoclip(value)
-    end
-})
-
--- FULL BRIGHT
-
-local FullBrightEnabled = false
-local OriginalLighting = nil
-
-local function SetFullBright(value)
-    FullBrightEnabled = value
-
-    if value then
-        if not OriginalLighting then
-            OriginalLighting = {
-                Brightness = Lighting.Brightness,
-                ClockTime = Lighting.ClockTime,
-                FogEnd = Lighting.FogEnd,
-                GlobalShadows = Lighting.GlobalShadows,
-                Ambient = Lighting.Ambient,
-                OutdoorAmbient = Lighting.OutdoorAmbient
-            }
-        end
-
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = false
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    elseif OriginalLighting then
-        Lighting.Brightness = OriginalLighting.Brightness
-        Lighting.ClockTime = OriginalLighting.ClockTime
-        Lighting.FogEnd = OriginalLighting.FogEnd
-        Lighting.GlobalShadows = OriginalLighting.GlobalShadows
-        Lighting.Ambient = OriginalLighting.Ambient
-        Lighting.OutdoorAmbient = OriginalLighting.OutdoorAmbient
-        OriginalLighting = nil
-    end
-end
-
-ConfigControls.FullBrightToggle = PlayerTab:CreateToggle({
-    Name = "Full Bright",
-    CurrentValue = false,
-    Flag = "FullBrightToggle",
-
-    Callback = function(value)
-        ConfigValues.FullBrightToggle = value
-        SetFullBright(value)
     end
 })
 
