@@ -14,6 +14,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local LUMBER_EMPIRE_ID = 99686412871121
 local MY_HAUNTED_HOUSE_ID = 17278083429
+local MURDER_MYSTERY_2_ID = 142823291
 local IsLumberEmpire = game.PlaceId == LUMBER_EMPIRE_ID
 
 local Rayfield = loadstring(game:HttpGet(
@@ -57,6 +58,12 @@ local ConfigValues = {
     AirportAutoHangarToggle = false,
     AirportAutoFlightToggle = false,
     AirportAutoUpgradeToggle = false,
+
+    MM2RoleESPToggle = false,
+    MM2RoleNotifierToggle = false,
+    MM2CoinESPToggle = false,
+    MM2AutoCoinsToggle = false,
+    MM2AutoPickupToggle = false,
 
     WalkSpeedToggle = false,
     WalkSpeedSlider = 32,
@@ -582,6 +589,574 @@ elseif game.PlaceId == MY_HAUNTED_HOUSE_ID then
                 Notify("Script Error", tostring(err))
             end
         end
+    })
+
+elseif game.PlaceId == MURDER_MYSTERY_2_ID then
+
+    --==================================================
+    -- MURDER MYSTERY 2 TAB
+    --==================================================
+
+    local MM2Tab = Window:CreateTab(
+        "🔪 Murder Mystery 2",
+        4483362458
+    )
+
+    MM2Tab:CreateParagraph({
+        Title = "Murder Mystery 2",
+        Content = "Role trackers, coin helpers, and weapon pickup automation."
+    })
+
+    local MM2LoopTokens = {}
+
+    local function StartMM2Loop(key, interval, action)
+        MM2LoopTokens[key] = (MM2LoopTokens[key] or 0) + 1
+        local token = MM2LoopTokens[key]
+
+        task.spawn(function()
+            while ConfigValues[key] and MM2LoopTokens[key] == token do
+                local ok, err = pcall(action)
+
+                if not ok then
+                    warn("[Pluto's Script Hub] " .. key .. ": " .. tostring(err))
+                end
+
+                task.wait(interval)
+            end
+        end)
+    end
+
+    local function StopMM2Loop(key)
+        MM2LoopTokens[key] = (MM2LoopTokens[key] or 0) + 1
+    end
+
+    local MURDERER_TOOLS = {"Knife"}
+    local SHERIFF_TOOLS = {"Gun", "Revolver"}
+
+    local ROLE_COLORS = {
+        Murderer = Color3.fromRGB(255, 60, 60),
+        Sheriff = Color3.fromRGB(60, 150, 255)
+    }
+
+    local function HasTool(player, toolNames)
+        local containers = {}
+        local character = player.Character
+        local backpack = player:FindFirstChildOfClass("Backpack")
+
+        if character then
+            table.insert(containers, character)
+        end
+
+        if backpack then
+            table.insert(containers, backpack)
+        end
+
+        for _, container in ipairs(containers) do
+            for _, toolName in ipairs(toolNames) do
+                local tool = container:FindFirstChild(toolName)
+
+                if tool and tool:IsA("Tool") then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    local function GetRole(player)
+        if HasTool(player, MURDERER_TOOLS) then
+            return "Murderer"
+        end
+
+        if HasTool(player, SHERIFF_TOOLS) then
+            return "Sheriff"
+        end
+
+        return nil
+    end
+
+    local function IsInsidePlayerCharacter(object)
+        local current = object
+
+        while current and current ~= workspace do
+            if current:IsA("Model") and Players:GetPlayerFromCharacter(current) then
+                return true
+            end
+
+            current = current.Parent
+        end
+
+        return false
+    end
+
+    local function GetCoinParts()
+        local coins = {}
+
+        for _, object in ipairs(workspace:GetDescendants()) do
+            if object:IsA("BasePart")
+                and string.find(string.lower(object.Name), "coin", 1, true)
+                and not IsInsidePlayerCharacter(object) then
+
+                table.insert(coins, object)
+            end
+        end
+
+        return coins
+    end
+
+    local function GetDroppedWeapons()
+        local weapons = {}
+
+        for _, object in ipairs(workspace:GetDescendants()) do
+            if object:IsA("Tool") and not IsInsidePlayerCharacter(object) then
+                local name = string.lower(object.Name)
+
+                if string.find(name, "gun", 1, true)
+                    or string.find(name, "knife", 1, true) then
+
+                    table.insert(weapons, object)
+                end
+            end
+        end
+
+        return weapons
+    end
+
+    local function TouchObject(target)
+        local character = LocalPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not root or not target or not target.Parent then
+            return false
+        end
+
+        local part = target
+
+        if not part:IsA("BasePart") then
+            part = target:FindFirstChild("Handle")
+                or target:FindFirstChildWhichIsA("BasePart", true)
+        end
+
+        if not part then
+            return false
+        end
+
+        if typeof(firetouchinterest) == "function" then
+            pcall(firetouchinterest, root, part, 0)
+            pcall(firetouchinterest, root, part, 1)
+            return true
+        end
+
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+        if humanoid then
+            humanoid:MoveTo(part.Position)
+            return true
+        end
+
+        return false
+    end
+
+    -- ROLES
+
+    MM2Tab:CreateSection("Roles")
+
+    local RoleESPEnabled = false
+    local RoleESPObjects = {}
+
+    local function RemoveRoleESP(player)
+        local data = RoleESPObjects[player]
+
+        if not data then
+            return
+        end
+
+        if data.Highlight then
+            data.Highlight:Destroy()
+        end
+
+        if data.Billboard then
+            data.Billboard:Destroy()
+        end
+
+        RoleESPObjects[player] = nil
+    end
+
+    local function ClearRoleESP()
+        local players = {}
+
+        for player in pairs(RoleESPObjects) do
+            table.insert(players, player)
+        end
+
+        for _, player in ipairs(players) do
+            RemoveRoleESP(player)
+        end
+    end
+
+    local function CreateRoleESP(player, role)
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not character or not root then
+            return
+        end
+
+        RemoveRoleESP(player)
+
+        local color = ROLE_COLORS[role]
+
+        local highlight = Instance.new("Highlight")
+        highlight.Name = "PlutoRoleESP"
+        highlight.Adornee = character
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.FillColor = color
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.FillTransparency = 0.35
+        highlight.OutlineTransparency = 0.1
+        highlight.Parent = character
+
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "PlutoRoleTag"
+        billboard.Adornee = root
+        billboard.Size = UDim2.new(0, 200, 0, 30)
+        billboard.StudsOffset = Vector3.new(0, 3.2, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Parent = character
+
+        local label = Instance.new("TextLabel")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.Text = role:upper() .. " | " .. player.DisplayName
+        label.TextColor3 = color
+        label.TextStrokeTransparency = 0.25
+        label.TextScaled = true
+        label.Font = Enum.Font.GothamBold
+        label.Parent = billboard
+
+        RoleESPObjects[player] = {
+            Role = role,
+            Highlight = highlight,
+            Billboard = billboard
+        }
+    end
+
+    local function UpdateRoleESP()
+        if not RoleESPEnabled then
+            if next(RoleESPObjects) then
+                ClearRoleESP()
+            end
+
+            return
+        end
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local role = GetRole(player)
+
+                if role then
+                    local data = RoleESPObjects[player]
+
+                    if not data
+                        or data.Role ~= role
+                        or not data.Highlight
+                        or data.Highlight.Adornee ~= player.Character then
+
+                        CreateRoleESP(player, role)
+                    end
+                else
+                    RemoveRoleESP(player)
+                end
+            end
+        end
+
+        for player in pairs(RoleESPObjects) do
+            if not player.Parent or not player.Character then
+                RemoveRoleESP(player)
+            end
+        end
+    end
+
+    ConfigControls.MM2RoleESPToggle = MM2Tab:CreateToggle({
+        Name = "Role ESP",
+        CurrentValue = false,
+        Flag = "MM2RoleESPToggle",
+
+        Callback = function(value)
+            ConfigValues.MM2RoleESPToggle = value
+            RoleESPEnabled = value
+
+            if not value then
+                ClearRoleESP()
+            end
+        end
+    })
+
+    task.spawn(function()
+        while task.wait(0.5) do
+            local ok, err = pcall(UpdateRoleESP)
+
+            if not ok then
+                warn("[Pluto's Script Hub] Role ESP: " .. tostring(err))
+            end
+        end
+    end)
+
+    local LastMurderer = nil
+    local LastSheriff = nil
+
+    local function CheckRoles()
+        local murderer, sheriff = nil, nil
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            local role = GetRole(player)
+
+            if role == "Murderer" then
+                murderer = player
+            elseif role == "Sheriff" then
+                sheriff = player
+            end
+        end
+
+        if murderer and murderer ~= LastMurderer then
+            if murderer == LocalPlayer then
+                Notify("Roles", "You are the Murderer!")
+            else
+                Notify("Roles", murderer.DisplayName .. " is the Murderer")
+            end
+        end
+
+        if sheriff and sheriff ~= LastSheriff then
+            if sheriff == LocalPlayer then
+                Notify("Roles", "You are the Sheriff!")
+            else
+                Notify("Roles", sheriff.DisplayName .. " is the Sheriff")
+            end
+        end
+
+        LastMurderer = murderer
+        LastSheriff = sheriff
+    end
+
+    ConfigControls.MM2RoleNotifierToggle = MM2Tab:CreateToggle({
+        Name = "Role Notifier",
+        CurrentValue = false,
+        Flag = "MM2RoleNotifierToggle",
+
+        Callback = function(value)
+            ConfigValues.MM2RoleNotifierToggle = value
+
+            if value then
+                StartMM2Loop("MM2RoleNotifierToggle", 1, CheckRoles)
+            else
+                StopMM2Loop("MM2RoleNotifierToggle")
+                LastMurderer = nil
+                LastSheriff = nil
+            end
+        end
+    })
+
+    -- COINS
+
+    MM2Tab:CreateSection("Coins")
+
+    local CoinESPEnabled = false
+    local CoinESPObjects = {}
+
+    local function RemoveCoinESP(part)
+        local billboard = CoinESPObjects[part]
+
+        if billboard then
+            billboard:Destroy()
+        end
+
+        CoinESPObjects[part] = nil
+    end
+
+    local function ClearCoinESP()
+        local parts = {}
+
+        for part in pairs(CoinESPObjects) do
+            table.insert(parts, part)
+        end
+
+        for _, part in ipairs(parts) do
+            RemoveCoinESP(part)
+        end
+    end
+
+    local function CreateCoinESP(part)
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "PlutoCoinESP"
+        billboard.Adornee = part
+        billboard.Size = UDim2.new(0, 60, 0, 20)
+        billboard.StudsOffset = Vector3.new(0, 1.5, 0)
+        billboard.AlwaysOnTop = true
+        billboard.Parent = part
+
+        local label = Instance.new("TextLabel")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.Text = "Coin"
+        label.TextColor3 = Color3.fromRGB(255, 215, 0)
+        label.TextStrokeTransparency = 0.35
+        label.TextScaled = true
+        label.Font = Enum.Font.GothamBold
+        label.Parent = billboard
+
+        return billboard
+    end
+
+    local function UpdateCoinESP()
+        if not CoinESPEnabled then
+            if next(CoinESPObjects) then
+                ClearCoinESP()
+            end
+
+            return
+        end
+
+        local seen = {}
+
+        for _, coin in ipairs(GetCoinParts()) do
+            seen[coin] = true
+
+            if not CoinESPObjects[coin] then
+                CoinESPObjects[coin] = CreateCoinESP(coin)
+            end
+        end
+
+        local stale = {}
+
+        for part in pairs(CoinESPObjects) do
+            if not seen[part] or not part.Parent then
+                table.insert(stale, part)
+            end
+        end
+
+        for _, part in ipairs(stale) do
+            RemoveCoinESP(part)
+        end
+    end
+
+    ConfigControls.MM2CoinESPToggle = MM2Tab:CreateToggle({
+        Name = "Coin ESP",
+        CurrentValue = false,
+        Flag = "MM2CoinESPToggle",
+
+        Callback = function(value)
+            ConfigValues.MM2CoinESPToggle = value
+            CoinESPEnabled = value
+
+            if value then
+                StartMM2Loop("MM2CoinESPToggle", 1, UpdateCoinESP)
+            else
+                StopMM2Loop("MM2CoinESPToggle")
+                ClearCoinESP()
+            end
+        end
+    })
+
+    local function CollectCoins()
+        local coins = GetCoinParts()
+
+        if #coins == 0 then
+            return
+        end
+
+        local character = LocalPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not character or not root then
+            return
+        end
+
+        if typeof(firetouchinterest) ~= "function" then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+            if not humanoid then
+                return
+            end
+
+            local nearest, nearestDistance = nil, math.huge
+
+            for _, coin in ipairs(coins) do
+                local distance = (coin.Position - root.Position).Magnitude
+
+                if distance < nearestDistance then
+                    nearest, nearestDistance = coin, distance
+                end
+            end
+
+            if nearest then
+                humanoid:MoveTo(nearest.Position)
+            end
+
+            return
+        end
+
+        for _, coin in ipairs(coins) do
+            if not ConfigValues.MM2AutoCoinsToggle then
+                return
+            end
+
+            pcall(firetouchinterest, root, coin, 0)
+            pcall(firetouchinterest, root, coin, 1)
+            task.wait(0.05)
+        end
+    end
+
+    ConfigControls.MM2AutoCoinsToggle = MM2Tab:CreateToggle({
+        Name = "Auto Collect Coins",
+        CurrentValue = false,
+        Flag = "MM2AutoCoinsToggle",
+
+        Callback = function(value)
+            ConfigValues.MM2AutoCoinsToggle = value
+
+            if value then
+                StartMM2Loop("MM2AutoCoinsToggle", 1, CollectCoins)
+            else
+                StopMM2Loop("MM2AutoCoinsToggle")
+            end
+        end
+    })
+
+    -- WEAPONS
+
+    MM2Tab:CreateSection("Weapons")
+
+    local function PickupWeapons()
+        for _, weapon in ipairs(GetDroppedWeapons()) do
+            if not ConfigValues.MM2AutoPickupToggle then
+                return
+            end
+
+            TouchObject(weapon)
+            task.wait(0.15)
+        end
+    end
+
+    ConfigControls.MM2AutoPickupToggle = MM2Tab:CreateToggle({
+        Name = "Auto Pickup Dropped Weapons",
+        CurrentValue = false,
+        Flag = "MM2AutoPickupToggle",
+
+        Callback = function(value)
+            ConfigValues.MM2AutoPickupToggle = value
+
+            if value then
+                StartMM2Loop("MM2AutoPickupToggle", 1, PickupWeapons)
+            else
+                StopMM2Loop("MM2AutoPickupToggle")
+            end
+        end
+    })
+
+    MM2Tab:CreateParagraph({
+        Title = "Notes",
+        Content = "Role detection reads the Knife and Gun tools from player inventories, so it updates as soon as a round starts."
     })
 
 end
