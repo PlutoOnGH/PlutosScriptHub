@@ -582,6 +582,24 @@ local PICKUP_RETRY_DELAY = 3
 
 local FailedPickups = setmetatable({}, {__mode = "k"})
 
+-- The murderer is left alone: their own knife is the only weapon they can use,
+-- and the jump grabbed them out of position mid-chase. Once the knife is seen
+-- the round stays marked until the next spawn, since it leaves their hands
+-- while it is thrown.
+local LocalIsMurderer = false
+
+local function IsLocalMurderer()
+    if HasTool(LocalPlayer, MURDERER_TOOLS) then
+        LocalIsMurderer = true
+    end
+
+    return LocalIsMurderer
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    LocalIsMurderer = false
+end)
+
 local function IsDropName(name)
     local lower = string.lower(name)
 
@@ -1120,6 +1138,10 @@ local function PickupWeapons()
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
     if not root or not root.Parent or not humanoid or humanoid.Health <= 0 then
+        return
+    end
+
+    if IsLocalMurderer() then
         return
     end
 
